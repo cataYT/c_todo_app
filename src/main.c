@@ -1,39 +1,20 @@
-#include "todo.h"
+#include <stdlib.h>
+#include "todo/todo.h"
 
-char* get_input(const char* msg)
-{
-    char input[100];
-    printf("%s", msg);
-
-    if (!fgets(input, sizeof(input), stdin))
-    {
-        printf("Error reading input\n");
-        return NULL;
-    }
-
-    // Truncate input if too long
-    if (strlen(input) == 99 && input[98] != '\n')
-    {
-        printf("Warning: Input too long, truncated.\n");
-        while (getchar() != '\n');  // Flush stdin
-    }
-
-    input[strcspn(input, "\n")] = '\0';
-    return strdup(input);  // NULL-checked in caller
-}
+// dynamic
 
 int main()
 {
     while (1)
     {
-        char* input = get_input("Enter your choice (add/read/delete/clear/exit): ");
+        char* input = get_input("Enter your choice (add/read/delete/clear/exit): ", 6); // dynamic
         if (!input) continue;  // Skip on error
 
         to_lowercase(input);
 
         if (strcmp(input, "add") == 0 || strcmp(input, "a") == 0)
         {
-            char* todo_item = get_input("Enter your todo item: ");
+            char* todo_item = get_input("Enter your todo item: ", 50);
             if (todo_item)
             {
                 add_todo(todo_item);
@@ -48,7 +29,7 @@ int main()
         }
         else if (strcmp(input, "delete") == 0 || strcmp(input, "d") == 0)
         {
-            char* delete_entry = get_input("Enter the todo item to delete: ");
+            char* delete_entry = get_input("Enter the todo item to delete: ", 50);
             if (delete_entry)
             {
                 delete_todo(delete_entry);

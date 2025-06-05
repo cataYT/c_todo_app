@@ -1,7 +1,2 @@
-main.exe
-main.obj
-main.pdb
-todo_app.exe
-todo.obj
-vc140.pdb
+/build
 /.vscode
