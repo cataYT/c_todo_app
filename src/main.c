@@ -1,48 +1,75 @@
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "todo/todo.h"
 
-// dynamic
+#define MAX_INPUT_LEN 64
+#define MAX_TODO_LEN 256
 
-int main()
+int main(void)
 {
+    char input[MAX_INPUT_LEN];
+
     while (1)
     {
-        char* input = get_input("Enter your choice (add/read/delete/clear/exit): ", 6); // dynamic
-        if (!input) continue;  // Skip on error
+        if (!get_string_input("Enter your choice (add/read/delete/clear/exit): ", input, MAX_INPUT_LEN))
+            continue;  // on input error retry
 
         to_lowercase(input);
 
         if (strcmp(input, "add") == 0 || strcmp(input, "a") == 0)
         {
-            char* todo_item = get_input("Enter your todo item: ", 50);
-            if (todo_item)
+            char todo_item[MAX_TODO_LEN];
+            if (get_string_input("Enter your todo item: ", todo_item, MAX_TODO_LEN))
             {
-                add_todo(todo_item);
-                free(todo_item);
+                if (!add_todo(todo_item))
+                    printf("Failed to add todo or it already exists.\n");
             }
         }
         else if (strcmp(input, "read") == 0 || strcmp(input, "r") == 0)
         {
-            char* items = read_todo();
-            printf("Items are: %s\n", items);
-            free(items);
+            char *content = NULL;
+            if (read_todo(&content))
+            {
+                printf("Todo items:\n%s\n", content);
+                free(content);
+            }
+            else
+            {
+                printf("Failed to read todo items.\n");
+            }
         }
         else if (strcmp(input, "delete") == 0 || strcmp(input, "d") == 0)
         {
-            char* delete_entry = get_input("Enter the todo item to delete: ", 50);
-            if (delete_entry)
+            char todo_item[MAX_TODO_LEN];
+            if (get_string_input("Enter the todo item to delete: ", todo_item, MAX_TODO_LEN))
             {
-                delete_todo(delete_entry);
-                free(delete_entry);
+                char **updated_items = NULL;
+                if (delete_todo(todo_item, &updated_items))
+                {
+                    printf("Deleted todo item. Updated list:\n");
+                    if (updated_items)
+                    {
+                        for (int i = 0; updated_items[i] != NULL; i++)
+                            printf("  %s\n", updated_items[i]);
+                        free_items(updated_items);
+                    }
+                }
+                else
+                {
+                    printf("Todo item not found or failed to delete.\n");
+                }
             }
         }
         else if (strcmp(input, "clear") == 0 || strcmp(input, "c") == 0)
         {
-            clear_todo();
+            if (clear_todo())
+                printf("Cleared all todo items.\n");
+            else
+                printf("Failed to clear todo items.\n");
         }
         else if (strcmp(input, "exit") == 0 || strcmp(input, "e") == 0)
         {
-            free(input);
             printf("Exiting...\n");
             break;
         }
@@ -50,7 +77,7 @@ int main()
         {
             printf("Invalid option.\n");
         }
-        free(input);  // Free here for all cases
     }
+
     return 0;
 }

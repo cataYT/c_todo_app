@@ -1,222 +1,346 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <stdbool.h>
+#include <ctype.h>
 #include "todo.h"
 
-void to_lowercase(char* str)
+#define FILE_PATH "todo_items.txt"
+
+bool read_todo(char **out_content)
 {
-    for (; *str; ++str)
-    {
-        *str = tolower((unsigned char)*str);
-    }
-}
-
-char* get_input(const char* msg, const size_t length)
-{
-    if (!msg)
-    {
-        fprintf(stderr, "msg is null, cannot get input");
-        return NULL;
-    }
-
-    char* input = malloc(length + 1);
-    if (!input)
-    {
-        fprintf(stderr, "malloc failed, cannot get input");
-        return NULL;
-    }
-
-    printf("%s", msg);
-    fflush(stdout);
-
-    if (!fgets(input, length + 1, stdin))
-    {
-        printf("Error reading input\n");
-        free(input);
-        return NULL;
-    }
-
-    // Remove trailing newline if present
-    size_t len = strlen(input);
-    if (len > 0 && input[len-1] == '\n')
-    {
-        input[len-1] = '\0';
-    }
-    else
-    {
-        // Clear remaining characters in stdin if buffer was too small
-        int c;
-        while ((c = getchar()) != '\n' && c != EOF);
-    }
-
-    return input;
-}
-
-char* read_todo()
-{
-    // Change from "rb" to "r" to handle line endings consistently
-    FILE* file = fopen(FILE_PATH, "r"); // dynamic
-    if (!file)
-    {
-        fprintf(stderr, "fopen failed.\n");
-        return NULL;
+    FILE *file = fopen(FILE_PATH, "r");
+    if (!file) {
+    // File doesn't exist, create it
+        file = fopen(FILE_PATH, "w+");  // create new file for read/write
+        if (!file) {
+            fprintf(stderr, "Failed to create file.\n");
+            return false;
+        }
     }
 
     fseek(file, 0, SEEK_END);
     long length = ftell(file);
-    rewind(file);
+    fseek(file, 0, SEEK_SET);
 
-    char* buffer = malloc(length + 1); // dynamic
+    char *buffer = malloc(length + 1);
     if (!buffer)
     {
-        fprintf(stderr, "malloc failed.\n");
-        fclose(file); // closed file - failure
-        return NULL;
+        fclose(file);
+        return false;
     }
 
     size_t read_len = fread(buffer, 1, length, file);
     buffer[read_len] = '\0';
+    fclose(file);
 
-    fclose(file); // closed file
-    return buffer;
+    *out_content = buffer;
+    return true;
 }
 
-// Returns 0 if todo_item found (case-insensitive exact match), 1 otherwise
-int find_todo(const char* todo_item)
+// Helper: convert string to lowercase in-place
+bool to_lowercase(char* str)
 {
-    if (!todo_item || strlen(todo_item) == 0)
-    {
-        fprintf(stderr, "todo item is null, cannot find");
-        return 1;
+    if (!str) {
+        fprintf(stderr, "string is null at to_lowercase()\n");
+        return false;
+    }
+    for (; *str; ++str) {
+        *str = (char)tolower((unsigned char)*str);
+    }
+    return true;
+}
+
+// Count lines in a file
+static size_t count_lines(const char* file_name)
+{
+    FILE *file = fopen(file_name, "r");
+    if (!file) {
+    // File doesn't exist, create it
+        file = fopen(FILE_PATH, "w+");  // create new file for read/write
+        if (!file) {
+            fprintf(stderr, "Failed to create file.\n");
+            return 0;
+        }
     }
 
-    char* content = read_todo(); // dynamic
+    size_t lines = 0;
+    int ch;
+    while ((ch = fgetc(file)) != EOF) {
+        if (ch == '\n') lines++;
+    }
+    fclose(file);
+    return lines;
+}
 
-    char* content_lower = strdup(content); // dynamic
-    if (!content_lower)
-    {
-        fprintf(stderr, "strdup failed.\n");
-        free(content); // free content - failure
-        return 1;
+// Load all todo items from file into a NULL-terminated array of strings.
+// Caller must free all strings and array with free_items().
+bool load_todos(char ***out_items)
+{
+    if (!out_items) return false;
+    *out_items = NULL;
+
+    size_t num_lines = count_lines(FILE_PATH);
+    if (num_lines == 0) {
+        // Empty file, return empty list
+        *out_items = malloc(sizeof(char *));
+        if (!*out_items) return false;
+        (*out_items)[0] = NULL;
+        return true;
     }
 
-    to_lowercase(content_lower);
+    FILE *file = fopen(FILE_PATH, "r");
+    if (!file) {
+    // File doesn't exist, create it
+        file = fopen(FILE_PATH, "w+");  // create new file for read/write
+        if (!file) {
+            fprintf(stderr, "Failed to create file.\n");
+            return false;
+        }
+    }
+
+    char **items = malloc((num_lines + 1) * sizeof(char *));
+    if (!items) {
+        fclose(file);
+        return false;
+    }
+
+    char buffer[1024];
+    size_t i = 0;
+    while (fgets(buffer, sizeof(buffer), file)) {
+        buffer[strcspn(buffer, "\n\r")] = '\0'; // remove newline
+
+        items[i] = strdup(buffer);
+        if (!items[i]) {
+            for (size_t j = 0; j < i; j++) free(items[j]);
+            free(items);
+            fclose(file);
+            return false;
+        }
+        i++;
+    }
+    items[i] = NULL;
+
+    fclose(file);
+    *out_items = items;
+    return true;
+}
+
+// Free the array and all strings allocated by load_todos or delete_todo
+void free_items(char **items)
+{
+    if (!items) return;
+    for (size_t i = 0; items[i] != NULL; i++) {
+        free(items[i]);
+    }
+    free(items);
+}
+
+// Check if todo_item exists (case-insensitive).
+// Returns true if found, false if not found or on error.
+bool todo_exists(const char *todo_item)
+{
+    if (!todo_item || strlen(todo_item) == 0) {
+        fprintf(stderr, "todo item is null or empty\n");
+        return false;
+    }
 
     char todo_lower[1024];
     snprintf(todo_lower, sizeof(todo_lower), "%s", todo_item);
     to_lowercase(todo_lower);
 
-    // tokenize by lines and compare
-    char* line = strtok(content_lower, "\n");
-    while (line)
-    {
-        if (strcmp(line, todo_lower) == 0)
-        {
-            free(content_lower); // free content_lower - found
-            free(content); // free content - found
-            return 0; // found
+    char **items = NULL;
+    if (!load_todos(&items)) return false;
+
+    bool found = false;
+    for (size_t i = 0; items[i] != NULL; i++) {
+        char line_lower[1024];
+        snprintf(line_lower, sizeof(line_lower), "%s", items[i]);
+        to_lowercase(line_lower);
+        if (strcmp(line_lower, todo_lower) == 0) {
+            found = true;
+            break;
         }
-        line = strtok(NULL, "\n");
     }
 
-    free(content_lower); // free content_lower - not found
-    free(content); // free content - found
-    return 1; // not found
+    free_items(items);
+    return found;
 }
 
-void add_todo(const char* todo_item)
+// Add a new todo item to the file.
+// Returns true on success, false on failure or if item already exists.
+bool add_todo(const char *todo_item)
 {
-    if (!find_todo(todo_item))
-    {
-        printf("Todo item already in the file!\n");
-        return;
+    if (!todo_item || strlen(todo_item) == 0) {
+        fprintf(stderr, "Invalid todo item to add\n");
+        return false;
     }
 
-    FILE* file = fopen(FILE_PATH, "a"); // dynamic
-    if (!file)
-    {
-        fprintf(stderr, "failed to open file.\n");
-        return;
+    if (todo_exists(todo_item)) {
+        printf("Todo item already in the file!\n");
+        return false;
+    }
+
+    FILE *file = fopen(FILE_PATH, "a+");
+    if (!file) {
+        fprintf(stderr, "Failed to open file for appending\n");
+        return false;
     }
 
     fprintf(file, "%s\n", todo_item);
-    fclose(file); // closed file
+    fclose(file);
 
     printf("Added todo item.\n");
+    return true;
 }
 
-void delete_todo(const char* todo_item)
+// Delete a todo item from the file, return updated list of todos in out_items.
+// Caller owns and must free out_items with free_items().
+// Returns true if deleted, false if not found or error.
+bool delete_todo(const char *todo_item, char ***out_items)
 {
-    if (find_todo(todo_item) != 0)
-    {
+    if (!todo_item || !out_items) return false;
+
+    *out_items = NULL;
+
+    if (!todo_exists(todo_item)) {
         printf("Todo item does not exist.\n");
-        return;
+        return false;
     }
 
-    FILE* file = fopen(FILE_PATH, "r"); // dynamic
-    if (!file)
-    {
-        fprintf(stderr, "failed to open file for reading.\n");
-        return;
+    FILE *file = fopen(FILE_PATH, "r");
+    if (!file) {
+    // File doesn't exist, create it
+        file = fopen(FILE_PATH, "w+");  // create new file for read/write
+        if (!file) {
+            fprintf(stderr, "Failed to create file.\n");
+            return false;
+        }
     }
 
-    FILE* temp = fopen("../../build/temp.txt", "w"); // dynamic
-    if (!temp)
-    {
-        fprintf(stderr, "failed to open temp file.\n");
-        fclose(file); // closed file - failure
-        return;
+    FILE *temp = fopen("temp.txt", "w");
+    if (!temp) {
+        fprintf(stderr, "Failed to open temp file for writing\n");
+        fclose(file);
+        return false;
     }
 
-    char line[1024];
-    int deleted = 0;
     char todo_lower[1024];
-
-    snprintf(todo_lower, sizeof(todo_lower), "%s", todo_item);  // Always null-terminates
+    snprintf(todo_lower, sizeof(todo_lower), "%s", todo_item);
     to_lowercase(todo_lower);
 
-    while (fgets(line, sizeof(line), file))
-    {
-        size_t new_line_index = strcspn(line, "\n\r");
-        line[new_line_index] = '\0';
+    char line[1024];
+    bool deleted = false;
+
+    // We'll store lines except the one deleted in a dynamic array
+    char **new_items = NULL;
+    size_t capacity = 16;
+    size_t count = 0;
+    new_items = malloc(capacity * sizeof(char *));
+    if (!new_items) {
+        fclose(file);
+        fclose(temp);
+        return false;
+    }
+
+    while (fgets(line, sizeof(line), file)) {
+        line[strcspn(line, "\n\r")] = '\0';
 
         char line_lower[1024];
         snprintf(line_lower, sizeof(line_lower), "%s", line);
         to_lowercase(line_lower);
 
-        if (strcmp(line_lower, todo_lower) == 0)
-        {
-            deleted = 1;
+        if (strcmp(line_lower, todo_lower) == 0) {
+            // skip this line (delete)
+            deleted = true;
             continue;
         }
 
         fprintf(temp, "%s\n", line);
+
+        // Store in new_items
+        if (count >= capacity - 1) {
+            capacity *= 2;
+            char **tmp = realloc(new_items, capacity * sizeof(char *));
+            if (!tmp) {
+                for (size_t i = 0; i < count; i++) free(new_items[i]);
+                free(new_items);
+                fclose(file);
+                fclose(temp);
+                return false;
+            }
+            new_items = tmp;
+        }
+        new_items[count] = strdup(line);
+        if (!new_items[count]) {
+            for (size_t i = 0; i < count; i++) free(new_items[i]);
+            free(new_items);
+            fclose(file);
+            fclose(temp);
+            return false;
+        }
+        count++;
     }
+    new_items[count] = NULL;
 
-    fclose(file); // closed file
-    fclose(temp); // closed temp
+    fclose(file);
+    fclose(temp);
 
-    if (!deleted)
-    {
+    if (!deleted) {
         remove("temp.txt");
-        fprintf(stderr, "Failed to delete todo (unexpected): %s\n", todo_item);
-        exit(1);
+        fprintf(stderr, "Failed to delete todo (unexpected)\n");
+        for (size_t i = 0; i < count; i++) free(new_items[i]);
+        free(new_items);
+        return false;
     }
 
-    remove(FILE_PATH);
-    rename("temp.txt", FILE_PATH);
+    if (remove(FILE_PATH) != 0 || rename("temp.txt", FILE_PATH) != 0) {
+        fprintf(stderr, "Failed to replace todo file\n");
+        for (size_t i = 0; i < count; i++) free(new_items[i]);
+        free(new_items);
+        return false;
+    }
+
+    *out_items = new_items;
     printf("Deleted todo item.\n");
+    return true;
 }
 
-void clear_todo()
+// Clear all todo items from the file.
+bool clear_todo()
 {
-    FILE* file = fopen(FILE_PATH, "w"); // dynamic
-    if (!file)
-    {
-        fprintf(stderr, "failed to open file.\n");
-        return;
+    FILE *file = fopen(FILE_PATH, "w");
+    if (!file) {
+        fprintf(stderr, "Failed to open file to clear\n");
+        return false;
     }
-    fclose(file); // closed file
+    fclose(file);
     printf("Cleared todo items.\n");
+    return true;
+}
+
+bool get_string_input(const char *msg, char *out, size_t max_length)
+{
+    if (!msg || !out || max_length == 0) return false;
+
+    printf("%s", msg);
+    fflush(stdout);
+
+    if (!fgets(out, max_length + 1, stdin)) {
+        if (feof(stdin)) {
+            fprintf(stderr, "EOF reached, no input\n");
+        } else {
+            fprintf(stderr, "failed to read input\n");
+        }
+        return false;
+    }
+
+    out[strcspn(out, "\n")] = '\0';
+
+    if (strlen(out) == max_length && out[max_length - 1] != '\0') {
+        int ch;
+        while ((ch = getchar()) != '\n' && ch != EOF);
+    }
+
+    return true;
 }
