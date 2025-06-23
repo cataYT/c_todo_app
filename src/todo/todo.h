@@ -3,37 +3,67 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-// Reads entire todo file content into a dynamically allocated string.
-// Caller must free *out_content.
-// Returns true on success, false on failure.
-bool read_todo(char **out_content);
+/**
+ * @brief Reads the todo from todo_items.txt and dynamically allocate it.
+ * 
+ * @param[out] out_content Pointer to string for holding the todo content.
+ * @return true on successful, false otherwise.
+ */
+bool todo_read(char **out_content);
 
-// Loads all todo items into a NULL-terminated array of strings.
-// Caller must free array and strings via free_items().
-// Returns true on success, false on failure.
-bool load_todos(char ***out_items);
+/**
+ * @brief Loads todo items for todo_read(). Use items_free() to deallocate it.
+ * 
+ * @param[out] out_items Pointer to caller allocated array of strings for holding the todo items.
+ * @return true on successful, false otherwise.
+ */
+bool todo_load(char ***out_items);
 
-// Frees an array of strings returned by load_todos() or delete_todo().
-void free_items(char **items);
+/**
+ * @brief Used for freeing items by todo_load() and todo_delete().
+ * 
+ * @param[in] items Pointer to string for freeing the items. 
+ */
+void items_free(char **items);
 
-// Adds a todo item to the file.
-// Returns true on success, false on failure or if item already exists.
-bool add_todo(const char *todo_item);
+/**
+ * @brief Adds an item into the todo.
+ * 
+ * @param[in] todo_item Item to add into the todo.
+ * @return true if successful, false otherwise.
+ */
+bool todo_add(const char *todo_item);
 
-// Deletes a todo item from the file.
-// Returns true on success, false if item not found or error.
-// Updated list of todos returned via out_items (caller must free).
-bool delete_todo(const char *todo_item, char ***out_items);
+/**
+ * @brief Deletes an item from todo and dynamically allocate it. Use items_free() to deallocate it.
+ * 
+ * @param[in] todo_item Item to delete from todo. 
+ * @param[out] out_items Pointer to array of strings for holding the deleted item.
+ * @return true if successful, false otherwise.
+ */
+bool todo_delete(const char *todo_item, char ***out_items);
 
-// Clears all todo items from the file.
-// Returns true on success, false on failure.
-bool clear_todo(void);
+/**
+ * @brief Clears the whole todo.
+ * 
+ * @return true if sucessful, false otherwise.
+ */
+bool todo_clear(void);
 
-// Converts a string to lowercase in-place.
-// Returns true on success, false if input is NULL.
+/**
+ * @brief Converts a string to lowercase in place.
+ * 
+ * @param[in,out] str String to convert to lowercase.
+ * @return true if successful, false otherwise. 
+ */
 bool to_lowercase(char *str);
 
-// Safely gets string input from the user with a prompt.
-// Stores result in out buffer (max_length).
-// Returns true on success, false on EOF or error.
-bool get_string_input(const char *msg, char *out, size_t max_length);
+/**
+ * @brief Used for getting string user input.
+ * 
+ * @param[in] msg Message to present to user.
+ * @param[out] out Caller allocated string for holding what the user inputted.
+ * @param[in] max_length Max length for the user to input the string.
+ * @return true if successful, false otherwise. 
+ */
+bool get_string_input(const char *msg, char *out, const size_t max_length);

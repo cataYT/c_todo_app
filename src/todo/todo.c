@@ -7,7 +7,7 @@
 
 #define FILE_PATH "todo_items.txt"
 
-bool read_todo(char **out_content)
+bool todo_read(char **out_content)
 {
     FILE *file = fopen(FILE_PATH, "r");
     if (!file) {
@@ -39,7 +39,7 @@ bool read_todo(char **out_content)
 }
 
 // Helper: convert string to lowercase in-place
-bool to_lowercase(char* str)
+bool to_lowercase(char *str)
 {
     if (!str) {
         fprintf(stderr, "string is null at to_lowercase()\n");
@@ -51,8 +51,13 @@ bool to_lowercase(char* str)
     return true;
 }
 
-// Count lines in a file
-static size_t count_lines(const char* file_name)
+/**
+ * @brief Helper function to count the number of lines in todo.
+ * 
+ * @param[in] file_name File name to count the number of lines for. 
+ * @return Number of lines if successful, 0 otherwise.
+ */
+static size_t count_lines(const char *file_name)
 {
     FILE *file = fopen(file_name, "r");
     if (!file) {
@@ -65,7 +70,7 @@ static size_t count_lines(const char* file_name)
     }
 
     size_t lines = 0;
-    int ch;
+    int ch = 0;
     while ((ch = fgetc(file)) != EOF) {
         if (ch == '\n') lines++;
     }
@@ -73,9 +78,7 @@ static size_t count_lines(const char* file_name)
     return lines;
 }
 
-// Load all todo items from file into a NULL-terminated array of strings.
-// Caller must free all strings and array with free_items().
-bool load_todos(char ***out_items)
+bool todo_load(char ***out_items)
 {
     if (!out_items) return false;
     *out_items = NULL;
@@ -105,7 +108,7 @@ bool load_todos(char ***out_items)
         return false;
     }
 
-    char buffer[1024];
+    char buffer[1024] = {'\0'};
     size_t i = 0;
     while (fgets(buffer, sizeof(buffer), file)) {
         buffer[strcspn(buffer, "\n\r")] = '\0'; // remove newline
@@ -126,8 +129,7 @@ bool load_todos(char ***out_items)
     return true;
 }
 
-// Free the array and all strings allocated by load_todos or delete_todo
-void free_items(char **items)
+void items_free(char **items)
 {
     if (!items) return;
     for (size_t i = 0; items[i] != NULL; i++) {
@@ -136,8 +138,12 @@ void free_items(char **items)
     free(items);
 }
 
-// Check if todo_item exists (case-insensitive).
-// Returns true if found, false if not found or on error.
+/**
+ * @brief Checks if a todo item is already in the todo or not.
+ * 
+ * @param[in] todo_item Todo item to check for.
+ * @return true if item exists, false otherwise.
+ */
 bool todo_exists(const char *todo_item)
 {
     if (!todo_item || strlen(todo_item) == 0) {
@@ -145,7 +151,7 @@ bool todo_exists(const char *todo_item)
         return false;
     }
 
-    char todo_lower[1024];
+    char todo_lower[1024] = {'\0'};
     snprintf(todo_lower, sizeof(todo_lower), "%s", todo_item);
     to_lowercase(todo_lower);
 
@@ -154,7 +160,7 @@ bool todo_exists(const char *todo_item)
 
     bool found = false;
     for (size_t i = 0; items[i] != NULL; i++) {
-        char line_lower[1024];
+        char line_lower[1024] = {'\0'};
         snprintf(line_lower, sizeof(line_lower), "%s", items[i]);
         to_lowercase(line_lower);
         if (strcmp(line_lower, todo_lower) == 0) {
@@ -167,9 +173,7 @@ bool todo_exists(const char *todo_item)
     return found;
 }
 
-// Add a new todo item to the file.
-// Returns true on success, false on failure or if item already exists.
-bool add_todo(const char *todo_item)
+bool todo_add(const char *todo_item)
 {
     if (!todo_item || strlen(todo_item) == 0) {
         fprintf(stderr, "Invalid todo item to add\n");
@@ -194,10 +198,7 @@ bool add_todo(const char *todo_item)
     return true;
 }
 
-// Delete a todo item from the file, return updated list of todos in out_items.
-// Caller owns and must free out_items with free_items().
-// Returns true if deleted, false if not found or error.
-bool delete_todo(const char *todo_item, char ***out_items)
+bool todo_delete(const char *todo_item, char ***out_items)
 {
     if (!todo_item || !out_items) return false;
 
@@ -225,11 +226,11 @@ bool delete_todo(const char *todo_item, char ***out_items)
         return false;
     }
 
-    char todo_lower[1024];
+    char todo_lower[1024] = {'\0'};
     snprintf(todo_lower, sizeof(todo_lower), "%s", todo_item);
     to_lowercase(todo_lower);
 
-    char line[1024];
+    char line[1024] = {'\0'};
     bool deleted = false;
 
     // We'll store lines except the one deleted in a dynamic array
@@ -246,7 +247,7 @@ bool delete_todo(const char *todo_item, char ***out_items)
     while (fgets(line, sizeof(line), file)) {
         line[strcspn(line, "\n\r")] = '\0';
 
-        char line_lower[1024];
+        char line_lower[1024] = {'\0'};
         snprintf(line_lower, sizeof(line_lower), "%s", line);
         to_lowercase(line_lower);
 
@@ -289,14 +290,18 @@ bool delete_todo(const char *todo_item, char ***out_items)
     if (!deleted) {
         remove("temp.txt");
         fprintf(stderr, "Failed to delete todo (unexpected)\n");
-        for (size_t i = 0; i < count; i++) free(new_items[i]);
+        for (size_t i = 0; i < count; i++) {
+            free(new_items[i]);
+        }
         free(new_items);
         return false;
     }
 
     if (remove(FILE_PATH) != 0 || rename("temp.txt", FILE_PATH) != 0) {
         fprintf(stderr, "Failed to replace todo file\n");
-        for (size_t i = 0; i < count; i++) free(new_items[i]);
+        for (size_t i = 0; i < count; i++) {
+            free(new_items[i]);
+        }
         free(new_items);
         return false;
     }
@@ -306,8 +311,7 @@ bool delete_todo(const char *todo_item, char ***out_items)
     return true;
 }
 
-// Clear all todo items from the file.
-bool clear_todo()
+bool todo_clear()
 {
     FILE *file = fopen(FILE_PATH, "w");
     if (!file) {
@@ -319,7 +323,7 @@ bool clear_todo()
     return true;
 }
 
-bool get_string_input(const char *msg, char *out, size_t max_length)
+bool get_string_input(const char *msg, char *out, const size_t max_length)
 {
     if (!msg || !out || max_length == 0) return false;
 
@@ -338,7 +342,7 @@ bool get_string_input(const char *msg, char *out, size_t max_length)
     out[strcspn(out, "\n")] = '\0';
 
     if (strlen(out) == max_length && out[max_length - 1] != '\0') {
-        int ch;
+        int ch = 0;
         while ((ch = getchar()) != '\n' && ch != EOF);
     }
 
