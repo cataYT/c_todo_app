@@ -7,7 +7,7 @@
 
 #define FILE_PATH "todo_items.txt"
 
-bool todo_read(char **out_content)
+char *todo_read()
 {
     FILE *file = fopen(FILE_PATH, "r");
     if (!file) {
@@ -15,7 +15,7 @@ bool todo_read(char **out_content)
         file = fopen(FILE_PATH, "w+");  // create new file for read/write
         if (!file) {
             fprintf(stderr, "Failed to create file.\n");
-            return false;
+            return NULL;
         }
     }
 
@@ -27,15 +27,14 @@ bool todo_read(char **out_content)
     if (!buffer)
     {
         fclose(file);
-        return false;
+        return NULL;
     }
 
     size_t read_len = fread(buffer, 1, length, file);
     buffer[read_len] = '\0';
     fclose(file);
 
-    *out_content = buffer;
-    return true;
+    return buffer;
 }
 
 // Helper: convert string to lowercase in-place
@@ -78,18 +77,15 @@ static size_t count_lines(const char *file_name)
     return lines;
 }
 
-bool todo_load(char ***out_items)
+char **todo_load()
 {
-    if (!out_items) return false;
-    *out_items = NULL;
-
     size_t num_lines = count_lines(FILE_PATH);
     if (num_lines == 0) {
-        // Empty file, return empty list
-        *out_items = malloc(sizeof(char *));
-        if (!*out_items) return false;
-        (*out_items)[0] = NULL;
-        return true;
+        // Empty file, return empty list (null-terminated)
+        char **out_items = malloc(sizeof(*out_items));
+        if (!out_items) return NULL;
+        out_items[0] = NULL;
+        return out_items;
     }
 
     FILE *file = fopen(FILE_PATH, "r");
@@ -98,35 +94,40 @@ bool todo_load(char ***out_items)
         file = fopen(FILE_PATH, "w+");  // create new file for read/write
         if (!file) {
             fprintf(stderr, "Failed to create file.\n");
-            return false;
+            return NULL;
         }
     }
 
     char **items = malloc((num_lines + 1) * sizeof(char *));
     if (!items) {
         fclose(file);
-        return false;
+        return NULL;
     }
 
-    char buffer[1024] = {'\0'};
+    char buffer[1024];
+    if (!buffer) {
+        fclose(file);
+        free(items);
+        return NULL;
+    }
     size_t i = 0;
     while (fgets(buffer, sizeof(buffer), file)) {
         buffer[strcspn(buffer, "\n\r")] = '\0'; // remove newline
 
         items[i] = strdup(buffer);
         if (!items[i]) {
-            for (size_t j = 0; j < i; j++) free(items[j]);
+            for (size_t j = 0; j < i; j++) 
+                free(items[j]);
             free(items);
             fclose(file);
-            return false;
+            return NULL;
         }
         i++;
     }
     items[i] = NULL;
 
     fclose(file);
-    *out_items = items;
-    return true;
+    return items;
 }
 
 void items_free(char **items)
@@ -151,16 +152,16 @@ bool todo_exists(const char *todo_item)
         return false;
     }
 
-    char todo_lower[1024] = {'\0'};
+    char todo_lower[1024];
     snprintf(todo_lower, sizeof(todo_lower), "%s", todo_item);
     to_lowercase(todo_lower);
 
-    char **items = NULL;
-    if (!load_todos(&items)) return false;
+    char **items = todo_load();
+    if (!items) return false;
 
     bool found = false;
     for (size_t i = 0; items[i] != NULL; i++) {
-        char line_lower[1024] = {'\0'};
+        char line_lower[1024];
         snprintf(line_lower, sizeof(line_lower), "%s", items[i]);
         to_lowercase(line_lower);
         if (strcmp(line_lower, todo_lower) == 0) {
@@ -169,7 +170,7 @@ bool todo_exists(const char *todo_item)
         }
     }
 
-    free_items(items);
+    items_free(items);
     return found;
 }
 
@@ -198,15 +199,13 @@ bool todo_add(const char *todo_item)
     return true;
 }
 
-bool todo_delete(const char *todo_item, char ***out_items)
+char **todo_delete(const char *todo_item)
 {
-    if (!todo_item || !out_items) return false;
-
-    *out_items = NULL;
+    if (!todo_item) return NULL;
 
     if (!todo_exists(todo_item)) {
         printf("Todo item does not exist.\n");
-        return false;
+        return NULL;
     }
 
     FILE *file = fopen(FILE_PATH, "r");
@@ -215,7 +214,7 @@ bool todo_delete(const char *todo_item, char ***out_items)
         file = fopen(FILE_PATH, "w+");  // create new file for read/write
         if (!file) {
             fprintf(stderr, "Failed to create file.\n");
-            return false;
+            return NULL;
         }
     }
 
@@ -223,31 +222,30 @@ bool todo_delete(const char *todo_item, char ***out_items)
     if (!temp) {
         fprintf(stderr, "Failed to open temp file for writing\n");
         fclose(file);
-        return false;
+        return NULL;
     }
 
-    char todo_lower[1024] = {'\0'};
+    char todo_lower[1024];
     snprintf(todo_lower, sizeof(todo_lower), "%s", todo_item);
     to_lowercase(todo_lower);
 
-    char line[1024] = {'\0'};
+    char line[1024];
     bool deleted = false;
 
     // We'll store lines except the one deleted in a dynamic array
-    char **new_items = NULL;
     size_t capacity = 16;
     size_t count = 0;
-    new_items = malloc(capacity * sizeof(char *));
+    char **new_items = malloc(capacity * sizeof(*new_items));
     if (!new_items) {
         fclose(file);
         fclose(temp);
-        return false;
+        return NULL;
     }
 
     while (fgets(line, sizeof(line), file)) {
         line[strcspn(line, "\n\r")] = '\0';
 
-        char line_lower[1024] = {'\0'};
+        char line_lower[1024];
         snprintf(line_lower, sizeof(line_lower), "%s", line);
         to_lowercase(line_lower);
 
@@ -264,21 +262,23 @@ bool todo_delete(const char *todo_item, char ***out_items)
             capacity *= 2;
             char **tmp = realloc(new_items, capacity * sizeof(char *));
             if (!tmp) {
-                for (size_t i = 0; i < count; i++) free(new_items[i]);
+                for (size_t i = 0; i < count; i++)
+                    free(new_items[i]);
                 free(new_items);
                 fclose(file);
                 fclose(temp);
-                return false;
+                return NULL;
             }
             new_items = tmp;
         }
         new_items[count] = strdup(line);
         if (!new_items[count]) {
-            for (size_t i = 0; i < count; i++) free(new_items[i]);
+            for (size_t i = 0; i < count; i++)
+                free(new_items[i]);
             free(new_items);
             fclose(file);
             fclose(temp);
-            return false;
+            return NULL;
         }
         count++;
     }
@@ -294,7 +294,7 @@ bool todo_delete(const char *todo_item, char ***out_items)
             free(new_items[i]);
         }
         free(new_items);
-        return false;
+        return NULL;
     }
 
     if (remove(FILE_PATH) != 0 || rename("temp.txt", FILE_PATH) != 0) {
@@ -303,12 +303,11 @@ bool todo_delete(const char *todo_item, char ***out_items)
             free(new_items[i]);
         }
         free(new_items);
-        return false;
+        return NULL;
     }
 
-    *out_items = new_items;
     printf("Deleted todo item.\n");
-    return true;
+    return new_items;
 }
 
 bool todo_clear()
@@ -323,28 +322,32 @@ bool todo_clear()
     return true;
 }
 
-bool get_string_input(const char *msg, char *out, const size_t max_length)
+char *get_string_input(const char *msg)
 {
-    if (!msg || !out || max_length == 0) return false;
+    if (!msg) return NULL;
 
     printf("%s", msg);
     fflush(stdout);
 
-    if (!fgets(out, max_length + 1, stdin)) {
+    size_t buffer_size = 256;
+    char *buffer = malloc(buffer_size + 1);
+
+    if (!fgets(buffer, buffer_size + 1, stdin)) {
         if (feof(stdin)) {
             fprintf(stderr, "EOF reached, no input\n");
         } else {
             fprintf(stderr, "failed to read input\n");
         }
-        return false;
+        free(buffer);
+        return NULL;
     }
 
-    out[strcspn(out, "\n")] = '\0';
+    buffer[strcspn(buffer, "\n")] = '\0';
 
-    if (strlen(out) == max_length && out[max_length - 1] != '\0') {
+    if (strlen(buffer) == buffer_size && buffer[buffer_size - 1] != '\0') {
         int ch = 0;
         while ((ch = getchar()) != '\n' && ch != EOF);
     }
 
-    return true;
+    return buffer;
 }
